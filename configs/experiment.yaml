@@ -1,0 +1,125 @@
+# ============================================================
+# Main experiment configuration
+# Missing Data Imputation for Irregular Light Curves
+# ============================================================
+
+# ---- Data ----
+data:
+  mission: kepler
+  cadence: long                    # ~29.4 min cadence
+  completeness_threshold: 0.95     # minimum fraction of observed cadences
+  analysis_window: 4000            # cadences per light curve
+  classes:
+    RRLYR:  {label: 0, approx_n: 478}
+    DSCT:   {label: 1, approx_n: 397}
+    EB:     {label: 2, approx_n: 853}
+    GDOR:   {label: 3, approx_n: 311}
+    SOL:    {label: 4, approx_n: 512}
+    ROT:    {label: 5, approx_n: 455}
+
+# ---- Preprocessing ----
+preprocessing:
+  outlier_sigma: 5.0
+  rolling_window: 30
+  quarter_offset_correction: true
+
+# ---- Gap injection ----
+gap:
+  fractions: [0.10, 0.30, 0.50]
+  block_ratio: 0.50                # fraction of gaps that are block gaps
+  block_min_len: 5                 # cadences
+  block_max_len: 50                # cadences
+  n_seeds: 30                      # independent realisations per light curve
+
+# ---- Train/test split ----
+split:
+  test_size: 0.30
+  random_state: 42
+  stratify: true
+
+# ---- Imputation hyperparameters ----
+imputation:
+  gp:
+    n_restarts: 20
+    optimizer: L-BFGS-B
+  ts_mice:
+    lag_order: 5
+    n_chains: 5
+    n_iter: 10
+    estimator: BayesianRidge
+  knn:
+    n_neighbors: 5
+    context_half_width: 10
+  rf:
+    n_estimators: 100
+    random_state: null             # set per-seed
+  rnn:
+    hidden_size: 64
+    n_epochs: 50
+    learning_rate: 0.001
+    input_size: 3
+  gain:
+    hidden_dims: [32, 64, 32]
+    hint_rate: 0.1
+    lambda_recon: 10
+    n_epochs: 200
+    learning_rate: 0.001
+  mf:
+    rank: 10
+    alpha: 0.001
+    tolerance: 0.0001
+    max_iter: 200
+  gb_mice:
+    lag_order: 5
+    n_chains: 5
+    n_iter: 10
+    n_estimators: 100
+    max_depth: 4
+    learning_rate: 0.1
+  saits:
+    d_model: 64
+    n_heads: 4
+    alpha_s: 0.3
+    n_epochs: 100
+    learning_rate: 0.001
+
+# ---- Feature extraction ----
+features:
+  n_features: 35
+  acf_lags: [1, 2, 3, 5, 10, 20]
+  period_recovery_threshold: 0.01  # 1% relative error
+
+# ---- Classifier ----
+classifier:
+  type: RandomForest
+  n_estimators: 500
+  criterion: gini
+  class_weight: balanced
+  random_state: 42
+  cv_folds: 5
+
+# ---- Secondary classifier ----
+classifier_secondary:
+  type: SVM
+  kernel: rbf
+  class_weight: balanced
+
+# ---- Evaluation ----
+evaluation:
+  n_bootstrap: 1000
+  alpha: 0.05
+  safe_acc_drop: 0.05              # 5 pp accuracy drop defines p*
+  numerical_stabilizer: 1.0e-8
+
+# ---- Paths ----
+paths:
+  data_raw: data/raw
+  data_processed: data/processed
+  data_cache: data/cache
+  results_tables: results/tables
+  results_figures: results/figures
+  results_models: results/models
+  logs: logs
+
+# ---- Reproducibility ----
+seed: 42

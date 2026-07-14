@@ -2,8 +2,7 @@
 
 [![Python 3.10](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/downloads/release/python-3100/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Tests](https://github.com/Adrita-Khan/lightcurve-imputation/actions/workflows/ci.yml/badge.svg)](https://github.com/Adrita-Khan/lightcurve-imputation/actions)
-[![DOI](https://zenodo.org/badge/DOI/10.0000/zenodo.0000000.svg)](https://doi.org/10.0000/zenodo.0000000)
+
 
 > **Simulation-based evaluation of 13 missing-data imputation methods for astronomical light curves**  
 > Accompanying code for the master's thesis *"Computational Aspects of Cosmology: Imputation Methods for Astronomical Light Curves with Missing Data"*

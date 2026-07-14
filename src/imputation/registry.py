@@ -1,108 +1,108 @@
 """
-Imputer registry — maps method name strings to instantiated imputers.
+Imputer registry: map config keys to imputer classes with hyperparameters.
 
-Usage:
-    from src.imputation.registry import get_imputer, ALL_METHOD_NAMES
+Usage::
 
-    imputer = get_imputer("GP_Matern32", seed=7)
-    flux_imputed = imputer.impute(flux, mask, time)
+    imputer = get_imputer("gp_matern", params={"n_restarts": 20}, seed=42)
 """
 
 from __future__ import annotations
 
-from .classical import MeanFillImputer, ForwardFillImputer, LinearImputer, SplineImputer
-from .gp_imputer import GPMatern32Imputer
-from .ts_mice    import TSMICEImputer
-from .ml_imputers import (
-    KNNImputer, RFImputer, RNNImputer,
-    GAINImputer, MFImputer, GBMICEImputer, SAITSImputer,
+from typing import Any, Optional
+
+from .deterministic import (
+    ForwardFillImputer,
+    LinearInterpImputer,
+    MeanFillImputer,
+    SplineInterpImputer,
 )
+from .gain_imputer import GAINImputer
+from .gb_mice import GBMICEImputer
+from .gp_imputer import GPMaternImputer
+from .knn_imputer import KNNImputer
+from .mf_imputer import MFImputer
+from .rf_imputer import RFImputer
+from .rnn_imputer import RNNImputer
+from .saits_imputer import SAITSImputer
+from .ts_mice import TSMICEImputer
 
-# Canonical method names (used in tables and filenames)
-ALL_METHOD_NAMES = [
-    "Mean_Fill",
-    "Forward_Fill",
-    "Linear",
-    "Spline",
-    "GP_Matern32",
-    "TS_MICE",
-    "KNN_Impute",
-    "RF_Impute",
-    "RNN_Impute",
-    "GAIN_Impute",
-    "MF_Impute",
-    "GB_MICE",
-    "SAITS",
-]
+_REGISTRY: dict[str, type] = {
+    "mean_fill": MeanFillImputer,
+    "forward_fill": ForwardFillImputer,
+    "linear_interp": LinearInterpImputer,
+    "spline_interp": SplineInterpImputer,
+    "gp_matern": GPMaternImputer,
+    "ts_mice": TSMICEImputer,
+    "knn_impute": KNNImputer,
+    "rf_impute": RFImputer,
+    "rnn_impute": RNNImputer,
+    "gain_impute": GAINImputer,
+    "mf_impute": MFImputer,
+    "gb_mice": GBMICEImputer,
+    "saits": SAITSImputer,
+}
 
-_REGISTRY = {
-    "Mean_Fill":    MeanFillImputer,
-    "Forward_Fill": ForwardFillImputer,
-    "Linear":       LinearImputer,
-    "Spline":       SplineImputer,
-    "GP_Matern32":  GPMatern32Imputer,
-    "TS_MICE":      TSMICEImputer,
-    "KNN_Impute":   KNNImputer,
-    "RF_Impute":    RFImputer,
-    "RNN_Impute":   RNNImputer,
-    "GAIN_Impute":  GAINImputer,
-    "MF_Impute":    MFImputer,
-    "GB_MICE":      GBMICEImputer,
-    "SAITS":        SAITSImputer,
+# Param key mapping: config-level param names → constructor argument names
+_PARAM_MAP: dict[str, dict[str, str]] = {
+    "gp_matern": {"n_restarts": "n_restarts"},
+    "ts_mice": {"L": "L", "n_chains": "n_chains", "max_iter": "max_iter"},
+    "knn_impute": {"k": "k", "W": "W"},
+    "rf_impute": {"n_estimators": "n_estimators", "L": "L"},
+    "rnn_impute": {"hidden_size": "hidden_size", "epochs": "epochs", "lr": "lr"},
+    "gain_impute": {
+        "hint_rate": "hint_rate",
+        "lambda_recon": "lambda_recon",
+        "epochs": "epochs",
+        "lr": "lr",
+    },
+    "mf_impute": {"rank": "rank", "alpha": "alpha", "tol": "tol", "max_iter": "max_iter"},
+    "gb_mice": {
+        "n_estimators": "n_estimators",
+        "max_depth": "max_depth",
+        "L": "L",
+        "n_chains": "n_chains",
+        "max_iter": "max_iter",
+    },
+    "saits": {"d_model": "d_model", "n_heads": "n_heads", "n_layers": "n_layers", "epochs": "epochs", "lr": "lr"},
 }
 
 
-def get_imputer(name: str, seed: int = 42, **kwargs):
-    """
-    Instantiate an imputer by name.
+def get_imputer(
+    key: str,
+    params: Optional[dict[str, Any]] = None,
+    seed: Optional[int] = None,
+):
+    """Instantiate an imputer by its registry key.
 
     Parameters
     ----------
-    name : str
-        One of ALL_METHOD_NAMES.
-    seed : int
-        Random seed forwarded to the imputer constructor.
-    **kwargs
-        Additional hyperparameters forwarded to the constructor.
+    key : str
+        Registry key (e.g. ``'gp_matern'``, ``'ts_mice'``).
+    params : dict or None
+        Hyperparameter dict from the YAML config.
+    seed : int or None
+        Random seed.
 
     Returns
     -------
-    BaseImputer
-        Instantiated imputer object.
+    ImputerBase
     """
-    if name not in _REGISTRY:
-        raise ValueError(
-            f"Unknown imputer '{name}'. Available: {list(_REGISTRY.keys())}"
+    if key not in _REGISTRY:
+        raise KeyError(
+            f"Unknown imputer '{key}'. Available: {list(_REGISTRY.keys())}"
         )
-    return _REGISTRY[name](seed=seed, **kwargs)
+    cls = _REGISTRY[key]
+    kwargs: dict[str, Any] = {"seed": seed}
+
+    if params:
+        pmap = _PARAM_MAP.get(key, {})
+        for cfg_name, ctor_name in pmap.items():
+            if cfg_name in params:
+                kwargs[ctor_name] = params[cfg_name]
+
+    return cls(**kwargs)
 
 
-def get_all_imputers(seed: int = 42, config: dict | None = None) -> dict:
-    """
-    Instantiate all thirteen imputers.
-
-    Parameters
-    ----------
-    seed : int
-        Base random seed.
-    config : dict | None
-        Optional config dict (from experiment.yaml) for hyperparameter overrides.
-
-    Returns
-    -------
-    dict mapping method name → imputer instance
-    """
-    cfg = config or {}
-    imp_cfg = cfg.get("imputation", {})
-
-    imputers = {}
-    for name, cls in _REGISTRY.items():
-        method_key = name.lower().replace("-", "_")
-        method_cfg = imp_cfg.get(method_key, {})
-        try:
-            imputers[name] = cls(seed=seed, **method_cfg)
-        except TypeError:
-            # Some imputers don't accept all kwargs — use defaults
-            imputers[name] = cls(seed=seed)
-
-    return imputers
+def list_imputers() -> list[str]:
+    """Return the list of registered imputer keys."""
+    return list(_REGISTRY.keys())

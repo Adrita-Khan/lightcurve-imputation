@@ -1,167 +1,106 @@
 """
-TS-MICE: Time-Series-Adapted Multiple Imputation by Chained Equations.
+TS-MICE: Time-Series Multiple Imputation by Chained Equations.
 
-Implements Algorithm 5 (TS-MICE) from the thesis.
+Uses lagged flux values and phase features (sin/cos of the estimated period)
+as predictors for a Bayesian Ridge regression in sklearn's IterativeImputer.
+Multiple chains are averaged for a stable point estimate.
 
-The design matrix augments the flux vector with:
-  - L=5 backward and forward lag columns
-  - sin(2π t / P̂) and cos(2π t / P̂) phase columns
-
-where P̂ is the dominant Lomb-Scargle period estimated from the observed cadences.
-
-C_chains=5 independent IterativeImputer chains (Bayesian Ridge, 10 iterations)
-are run and averaged.
-
-Requires: scikit-learn, astropy (for LombScargle)
+Implements Algorithm in Section 3.4 (TS-MICE) of the thesis.
 """
 
 from __future__ import annotations
 
-import logging
+from typing import Optional
 
 import numpy as np
+from sklearn.experimental import enable_iterative_imputer  # noqa: F401
+from sklearn.impute import IterativeImputer
+from sklearn.linear_model import BayesianRidge
 
-from .base import BaseImputer
-from ..utils.period import lomb_scargle_period
-
-logger = logging.getLogger(__name__)
+from .base import ImputerBase
 
 
-def build_lag_phase_matrix(
-    flux: np.ndarray,
-    time: np.ndarray,
-    lag_order: int = 5,
-    period: float | None = None,
-) -> np.ndarray:
-    """
-    Build the (N × (2L+3)) lag-and-phase design matrix used by TS-MICE,
-    RF-Impute, and GB-MICE.
-
-    Column order: [f_{i-L}, …, f_{i-1}, f_i, f_{i+1}, …, f_{i+L},
-                   sin(2πt/P̂), cos(2πt/P̂)]
-
-    The lag-zero column (f_i) is the imputation target.
-    Boundary lag values are filled by LOCF/NOCB.
+class TSMICEImputer(ImputerBase):
+    """TS-MICE: Time-Series MICE with lag and phase features.
 
     Parameters
     ----------
-    flux : np.ndarray, shape (N,)
-        Flux vector (NaN at missing positions).
-    time : np.ndarray, shape (N,)
-        Cadence times.
-    lag_order : int
-        Number of lag/lead steps L (default 5).
-    period : float | None
-        Pre-computed period; if None, Lomb-Scargle is computed on observed flux.
-
-    Returns
-    -------
-    X : np.ndarray, shape (N, 2L+3)
-        Design matrix. The lag-0 column (index L) is the flux target.
-    period_est : float
-        Estimated dominant period.
-    """
-    N = len(flux)
-    # Fill-in for boundary lags using LOCF/NOCB
-    obs_idx = np.where(np.isfinite(flux))[0]
-    flux_filled = flux.copy()
-    if len(obs_idx) > 0:
-        for i in range(N):
-            if not np.isfinite(flux_filled[i]):
-                prev = obs_idx[obs_idx < i]
-                nxt  = obs_idx[obs_idx > i]
-                if len(prev):
-                    flux_filled[i] = flux[prev[-1]]
-                elif len(nxt):
-                    flux_filled[i] = flux[nxt[0]]
-
-    # Estimate period if not provided
-    if period is None:
-        mask = np.isfinite(flux)
-        if mask.sum() > 10:
-            period = lomb_scargle_period(time[mask], flux[mask])
-        else:
-            period = float(np.ptp(time) / 2.0)  # fallback
-
-    # Lag columns
-    cols = []
-    for lag in range(-lag_order, lag_order + 1):
-        shifted = np.roll(flux_filled, -lag)
-        if lag > 0:
-            shifted[-lag:] = flux_filled[-1]
-        elif lag < 0:
-            shifted[:-lag] = flux_filled[0]
-        cols.append(shifted)
-
-    # Phase columns
-    phase = 2.0 * np.pi * time / period
-    cols.append(np.sin(phase))
-    cols.append(np.cos(phase))
-
-    X = np.column_stack(cols)  # (N, 2L+3)
-    return X, period
-
-
-class TSMICEImputer(BaseImputer):
-    """
-    Time-Series-Adapted Multiple Imputation by Chained Equations (TS-MICE).
-
-    Parameters
-    ----------
-    lag_order : int
-        Number of lagged predictors L (default 5).
+    L : int
+        Number of lag/lead features on each side.
     n_chains : int
-        Number of independent MICE chains (default 5).
-    n_iter : int
-        Iterations per chain (default 10).
-    seed : int
-        Random seed for first chain; subsequent chains use seed + c.
+        Number of independent MICE chains to average.
+    max_iter : int
+        Maximum MICE iterations per chain.
+    seed : int or None
+        Random seed.
     """
 
     def __init__(
         self,
-        lag_order: int = 5,
+        L: int = 5,
         n_chains: int = 5,
-        n_iter: int = 10,
-        seed: int = 42,
-    ):
-        super().__init__(seed=seed)
-        self.lag_order = lag_order
+        max_iter: int = 10,
+        seed: Optional[int] = None,
+    ) -> None:
+        super().__init__(name="TS-MICE", seed=seed)
+        self.L = L
         self.n_chains = n_chains
-        self.n_iter = n_iter
+        self.max_iter = max_iter
 
     def impute(
         self,
+        t: np.ndarray,
         flux: np.ndarray,
-        mask: np.ndarray,
-        time: np.ndarray,
+        missing_idx: np.ndarray,
+        period_est: Optional[float] = None,
     ) -> np.ndarray:
-        from sklearn.experimental import enable_iterative_imputer  # noqa: F401
-        from sklearn.impute import IterativeImputer
-        from sklearn.linear_model import BayesianRidge
+        N = len(flux)
+        if period_est is None or period_est <= 0:
+            period_est = float(t[-1] - t[0]) / 2.0  # rough fallback
 
-        X, _ = build_lag_phase_matrix(flux, time, lag_order=self.lag_order)
-        target_col = self.lag_order  # lag-0 column index
+        # Build design matrix: lagged columns + phase features
+        X = _build_feature_matrix(flux, t, period_est, L=self.L)
 
-        chain_preds = []
+        chain_results = []
+        rng = np.random.default_rng(self.seed)
         for c in range(self.n_chains):
-            imp = IterativeImputer(
+            chain_seed = int(rng.integers(0, 2**31))
+            imputer = IterativeImputer(
                 estimator=BayesianRidge(),
-                max_iter=self.n_iter,
-                sample_posterior=True,
-                random_state=self.seed + c,
-                initial_strategy="mean",
+                max_iter=self.max_iter,
+                random_state=chain_seed,
+                min_value=-np.inf,
+                max_value=np.inf,
             )
-            X_imp = imp.fit_transform(X)
-            chain_preds.append(X_imp[:, target_col])
+            X_imp = imputer.fit_transform(X)
+            chain_results.append(X_imp[:, 0])  # lag-0 column is the flux
 
-        # Average across chains
-        f_imputed = np.mean(np.stack(chain_preds, axis=0), axis=0)
+        imputed = flux.copy()
+        mean_chain = np.nanmean(np.stack(chain_results, axis=1), axis=1)
+        imputed[missing_idx] = mean_chain[missing_idx]
+        return imputed
 
-        out = flux.copy().astype(float)
-        out[~mask] = f_imputed[~mask]
-        return out
 
-    @property
-    def name(self) -> str:
-        return "TS_MICE"
+def _build_feature_matrix(
+    flux: np.ndarray, t: np.ndarray, period_est: float, L: int
+) -> np.ndarray:
+    """Build lag-and-phase design matrix (Equation 3.5 in thesis)."""
+    N = len(flux)
+    cols = [flux.copy()]  # lag 0
+
+    for lag in range(1, L + 1):
+        lagged = np.full(N, np.nan)
+        lagged[lag:] = flux[:-lag]
+        cols.append(lagged)
+
+        led = np.full(N, np.nan)
+        led[:-lag] = flux[lag:]
+        cols.append(led)
+
+    # Phase features
+    phase_sin = np.sin(2.0 * np.pi * t / period_est)
+    phase_cos = np.cos(2.0 * np.pi * t / period_est)
+    cols.append(phase_sin)
+    cols.append(phase_cos)
+
+    return np.column_stack(cols)

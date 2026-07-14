@@ -1,0 +1,102 @@
+# ============================================================
+# Master experiment configuration for lightcurve-imputation
+# All parameters are documented; no hard-coded values in code.
+# ============================================================
+
+# ----- Synthetic signal parameters -----
+signal:
+  N: 1323             # Number of cadences (Kepler Q1 long-cadence approx.)
+  dt: 0.0204          # Cadence in days (~29.4 min, Kepler long-cadence)
+  A: 0.1              # Amplitude in normalised flux units
+  P0: 1.0             # True period in days
+  phi0: 0.0           # Initial phase (radians)
+  mu0: 1.0            # Baseline flux
+  sigma_eps: 0.02     # Gaussian noise standard deviation
+  seed: 0             # Global seed for signal generation (fixed)
+
+# ----- Missing-data injection parameters -----
+missingness:
+  fractions: [0.10, 0.30, 0.50]   # Missingness fractions to evaluate
+  block_ratio: 0.50                # Fraction of missing points in contiguous blocks
+  block_min_len: 5                 # Minimum block gap length (cadences)
+  block_max_len: 50                # Maximum block gap length (cadences)
+  n_seeds: 30                      # Number of independent gap realisations per fraction
+
+# ----- Imputation methods to run -----
+# Set to false to skip a method (useful for fast testing)
+methods:
+  mean_fill: true
+  forward_fill: true
+  linear_interp: true
+  spline_interp: true
+  gp_matern: true
+  ts_mice: true
+  knn_impute: true
+  rf_impute: true
+  rnn_impute: true
+  gain_impute: true
+  mf_impute: true
+  gb_mice: true
+  saits: true
+
+# ----- Method hyperparameters -----
+method_params:
+  ts_mice:
+    L: 5                # Number of lag features on each side
+    n_chains: 5         # Number of multiple-imputation chains
+    max_iter: 10        # MICE iterations per chain
+  knn_impute:
+    k: 5                # Number of nearest neighbours
+    W: 10               # Context window half-width
+  rf_impute:
+    n_estimators: 100   # Random forest trees
+    L: 5                # Lag order for feature matrix
+  rnn_impute:
+    hidden_size: 64     # BiLSTM hidden units per direction
+    epochs: 50          # Training epochs
+    lr: 0.001           # Adam learning rate
+  gain_impute:
+    hint_rate: 0.1      # Fraction of hints revealed to discriminator
+    lambda_recon: 10.0  # Reconstruction loss weight
+    epochs: 200         # GAN training epochs
+    lr: 0.001           # Adam learning rate
+  mf_impute:
+    rank: 10            # Hankel matrix factorisation rank
+    alpha: 0.001        # Tikhonov regularisation coefficient
+    tol: 0.0001         # ALS convergence tolerance
+    max_iter: 200       # Maximum ALS iterations
+  gb_mice:
+    n_estimators: 100   # XGBoost trees per estimator
+    max_depth: 4        # Tree depth
+    L: 5                # Lag order
+    n_chains: 5         # Imputation chains
+    max_iter: 5         # MICE iterations
+  saits:
+    d_model: 64         # Transformer model dimension
+    n_heads: 4          # Multi-head attention heads
+    n_layers: 2         # DMSA blocks
+    epochs: 100         # Training epochs
+    lr: 0.001           # Adam learning rate
+  gp_matern:
+    n_restarts: 20      # Hyperparameter optimisation restarts
+
+# ----- Evaluation metrics -----
+evaluation:
+  period_tol: 0.01      # Relative period error threshold for PRR (1%)
+  eps_stab: 1.0e-8      # Numerical stabiliser for amplitude/phase errors
+
+# ----- Output directories -----
+output:
+  results_dir: "data/results"
+  figures_dir: "figures"
+  tables_dir: "tables"
+  figure_formats: ["pdf", "png", "svg"]
+  dpi: 300
+
+# ----- Reproducibility -----
+reproducibility:
+  base_seed: 42         # Base seed from which per-realisation seeds are derived
+
+# ----- Parallel execution -----
+parallel:
+  n_jobs: -1            # -1 = use all available CPU cores

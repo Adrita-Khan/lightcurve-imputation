@@ -1,373 +1,228 @@
-# Missing Data Imputation for Irregular Light Curves in Astronomy
+# lightcurve-imputation
 
-**MSc Thesis — Adrita Khan**  
-Department of Mathematics and Physics, North South University, Bangladesh  
-Supervisor: Assoc. Prof. Dr. Md. Sumon Hossain  
-Programme: MSc Applied Mathematics and Computational Science  
-Date: June 2026
+[![Python 3.10](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/downloads/release/python-3100/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Tests](https://github.com/Adrita-Khan/lightcurve-imputation/actions/workflows/ci.yml/badge.svg)](https://github.com/Adrita-Khan/lightcurve-imputation/actions)
+[![DOI](https://zenodo.org/badge/DOI/10.0000/zenodo.0000000.svg)](https://doi.org/10.0000/zenodo.0000000)
+
+> **Simulation-based evaluation of 13 missing-data imputation methods for astronomical light curves**  
+> Accompanying code for the master's thesis *"Computational Aspects of Cosmology: Imputation Methods for Astronomical Light Curves with Missing Data"*
 
 ---
 
 ## Overview
 
-This repository contains the complete, reproducible code for the thesis:
+Modern astronomical surveys (Kepler, TESS, ZTF, Rubin LSST) produce light curves for millions of objects, but observational gaps from weather, satellite safe-modes, and detector issues are unavoidable. This repository provides a **fully reproducible, simulation-based benchmark** for comparing 13 imputation methods on synthetic periodic light curves with a known ground truth.
 
-> **"Missing Data Imputation for Irregular Light Curves in Astronomy: A Statistical Evaluation of Imputation Methods for Preserving Variable Star Classification Performance"**
+### Key features
 
-The thesis evaluates **thirteen imputation strategies** on Kepler mission light curves under controlled artificial gap injection at three missingness levels (10%, 30%, 50%), measuring both reconstruction fidelity (RMSE, MAE) and downstream variable-star classification accuracy.
-
-### The 13 imputation methods
-
-| # | Method | Paradigm |
-|---|---|---|
-| 1 | Mean-fill | Deterministic |
-| 2 | Forward-fill (LOCF) | Deterministic |
-| 3 | Linear interpolation | Interpolation |
-| 4 | Cubic spline interpolation | Interpolation |
-| 5 | GP regression (Matérn-3/2) | Probabilistic |
-| 6 | TS-MICE | Multiple imputation |
-| 7 | KNN-Impute | ML-based |
-| 8 | RF-Impute | ML-based |
-| 9 | RNN-Impute (BiLSTM) | ML-based |
-| 10 | GAIN-Impute (GAN) | ML-based |
-| 11 | MF-Impute (Hankel ALS) | ML-based |
-| 12 | GB-MICE (XGBoost) | ML-based |
-| 13 | SAITS (Self-Attention) | ML-based |
-
-### Variable-star classes
-
-| Class | Abbreviation | ~Sample size |
-|---|---|---|
-| RR Lyrae | RRLYR | 478 |
-| δ Scuti / SX Phe | DSCT | 397 |
-| Eclipsing Binary | EB | 853 |
-| γ Doradus | GDOR | 311 |
-| Solar-like Oscillators | SOL | 512 |
-| Spotted / Rotational | ROT | 455 |
-| **Total** | | **3,006** |
+- **13 imputation methods** from mean-fill to Transformer-based SAITS
+- **No external datasets required** — fully self-contained synthetic pipeline
+- **Complete reproducibility** via fixed random seeds
+- **Publication-quality figures** and **LaTeX tables** generated automatically
+- **Single command** to reproduce every result in the thesis: `make reproduce`
 
 ---
 
-## Repository Structure
+## Motivation and research questions
+
+The imputation step is often treated as a minor implementation detail, yet the choice of method measurably affects:
+
+1. **Pointwise fidelity** (RMSE, MAE at missing cadences)
+2. **Period recovery** (Lomb–Scargle period accuracy after imputation)
+3. **Amplitude and phase preservation** (scientifically critical for classification)
+4. **Computational cost** (essential for survey-scale pipelines)
+
+**Central research question:**
+> *Which missing-data imputation method best preserves the periodic signal structure of an astronomical light curve, and what fraction of missing observations can be tolerated before significant degradation occurs?*
+
+---
+
+## The 13 imputation methods
+
+| # | Method | Paradigm | Key tool |
+|---|--------|----------|----------|
+| 1 | Mean-Fill | Deterministic | `SimpleImputer` |
+| 2 | Forward-Fill (LOCF) | Deterministic | `DataFrame.ffill` |
+| 3 | Linear Interpolation | Interpolation | `scipy.interp1d` |
+| 4 | Cubic Spline | Interpolation | `CubicSpline` |
+| 5 | GP (Matérn-3/2) | Probabilistic | `george` |
+| 6 | TS-MICE | Multiple imputation | `IterativeImputer` |
+| 7 | KNN-Impute | Machine learning | `KNNImputer` |
+| 8 | RF-Impute | Machine learning | `RandomForestRegressor` |
+| 9 | RNN-Impute (BiLSTM) | Deep learning | `PyTorch` |
+| 10 | GAIN-Impute | Deep learning (GAN) | `PyTorch` |
+| 11 | MF-Impute | Matrix factorisation | `NumPy` ALS |
+| 12 | GB-MICE | Machine learning | `XGBoost` |
+| 13 | SAITS | Deep learning (Transformer) | `PyTorch` |
+
+---
+
+## Quick start
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/Adrita-Khan/lightcurve-imputation.git
+cd lightcurve-imputation
+```
+
+### 2. Create and activate the conda environment
+
+```bash
+conda create -n lc_imputation python=3.10
+conda activate lc_imputation
+pip install -r requirements.txt
+pip install -e .
+```
+
+### 3. Reproduce all results
+
+```bash
+make reproduce
+# or equivalently:
+python run_all.py
+```
+
+This single command:
+1. Generates the synthetic light curve (N=1323, Kepler-cadence)
+2. Injects MCAR gaps at 10%, 30%, 50% (30 realisations each)
+3. Applies all 13 imputation methods
+4. Computes RMSE, MAE, period recovery, amplitude error, phase error, runtime
+5. Runs Wilcoxon, Friedman, and Nemenyi statistical tests
+6. Saves all figures to `figures/` and tables to `tables/`
+
+### 4. Fast smoke test (CI/reduced settings)
+
+```bash
+make fast-test
+# or:
+python run_all.py --config configs/fast_test.yml
+```
+
+---
+
+## Repository structure
 
 ```
-kepler-imputation/
+thesis-lightcurve-imputation/
 │
-├── README.md                      ← This file
-├── requirements.txt               ← Python dependencies (pip)
-├── environment.yml                ← Conda environment specification
-├── pyproject.toml                 ← Pytest configuration
+├── README.md               ← This file
+├── LICENSE                 ← MIT licence
+├── CITATION.cff            ← Machine-readable citation
 ├── .gitignore
+├── pyproject.toml          ← Package metadata (PEP 621)
+├── requirements.txt        ← Pinned dependencies
+├── environment.yml         ← Conda environment
+├── setup.py                ← Backward-compat shim
+├── Makefile                ← Convenience commands
+├── Dockerfile              ← Container for full reproducibility
+├── docker-compose.yml
+├── run_all.py              ← Single entry point
 │
 ├── configs/
-│   └── experiment.yaml            ← All hyperparameters, paths, seeds
+│   ├── experiment.yml      ← Full experiment (30 seeds × 3 fractions)
+│   └── fast_test.yml       ← Reduced settings for CI
 │
-├── src/                           ← Source code package
-│   ├── __init__.py
-│   ├── data/
-│   │   ├── download.py            ← MAST data acquisition + catalogue merging
-│   │   ├── preprocessing.py       ← Algorithm 1: preprocessing pipeline
-│   │   └── gap_injection.py       ← Algorithm 2: MCAR gap injection
-│   │
-│   ├── imputation/
-│   │   ├── base.py                ← Abstract BaseImputer class
-│   │   ├── classical.py           ← Algorithm 3: Mean/LOCF/Linear/Spline
-│   │   ├── gp_imputer.py          ← Algorithm 4: GP Matérn-3/2
-│   │   ├── ts_mice.py             ← Algorithm 5: TS-MICE + design matrix
-│   │   ├── ml_imputers.py         ← Algorithms 6–12: KNN/RF/RNN/GAIN/MF/GB/SAITS
-│   │   └── registry.py            ← Factory: get_imputer(), get_all_imputers()
-│   │
-│   ├── features/
-│   │   └── extraction.py          ← Algorithm 5 (feat): 35-D feature vector
-│   │
-│   ├── classification/
-│   │   └── classifier.py          ← Algorithm 6: RF + SVM classifiers
-│   │
-│   ├── evaluation/
-│   │   └── metrics.py             ← RMSE, MAE, ΔAcc, PRR, Δφ_k, bootstrap CI,
-│   │                                 Friedman, Nemenyi, Wilcoxon
-│   │
-│   └── utils/
-│       └── period.py              ← Lomb-Scargle period estimation
+├── src/
+│   ├── simulation/         ← Synthetic light-curve generator
+│   ├── missingness/        ← MCAR gap injection
+│   ├── imputation/         ← All 13 imputation methods + registry
+│   ├── evaluation/         ← Metrics + result aggregation
+│   ├── statistics/         ← Wilcoxon, Friedman, Nemenyi, bootstrap CI
+│   ├── visualization/      ← Publication-quality figure generation
+│   ├── utils/              ← Config, I/O, logging, seeds
+│   └── pipeline/           ← Experiment orchestration
 │
-├── scripts/
-│   ├── download_data.py           ← Step 1: download + preprocess all data
-│   ├── run_experiment.py          ← Step 2: run full benchmark
-│   ├── run_statistical_tests.py   ← Step 3: Friedman/Nemenyi/Wilcoxon tests
-│   └── generate_figures.py        ← Step 4: produce all figures + tables
-│
-├── notebooks/
-│   ├── 01_exploratory_data_analysis.ipynb
-│   ├── 02_imputation_methods_demo.ipynb
-│   └── 03_results_analysis.ipynb
-│
-├── tests/
-│   ├── test_gap_injection.py
-│   ├── test_imputers.py
-│   └── test_features_and_metrics.py
-│
-├── docs/
-│   ├── modules.md                 ← Per-module documentation
-│   └── workflow.md                ← End-to-end pipeline walkthrough
-│
-├── data/                          ← Created on first run (not in Git)
-│   ├── raw/                       ← Downloaded Kepler .parquet files (raw)
-│   ├── processed/                 ← Preprocessed light curves
-│   └── cache/                     ← Catalogue CSVs
-│
-└── results/                       ← Generated by scripts (not in Git)
-    ├── tables/                    ← CSV tables (Tables 4.1–4.10)
-    ├── figures/                   ← PDF/PNG figures
-    └── models/                    ← Trained classifier .pkl
-```
-
----
-
-## Setup
-
-### Requirements
-
-- Python 3.10+
-- Internet access (for MAST downloads via `lightkurve`)
-
-### Option A: pip + virtualenv
-
-```bash
-git clone https://github.com/<your-username>/kepler-imputation.git
-cd kepler-imputation
-
-python -m venv .venv
-source .venv/bin/activate        # Linux/macOS
-# .venv\Scripts\activate         # Windows
-
-pip install -r requirements.txt
-```
-
-### Option B: conda
-
-```bash
-conda env create -f environment.yml
-conda activate kepler-imputation
-```
-
-### Verify installation
-
-```bash
-python -c "import lightkurve, george, torch, xgboost, sklearn; print('All dependencies OK')"
-```
-
----
-
-## Reproducing the Results
-
-Follow these steps in order. Each step takes the output of the previous as input.
-
-### Step 1: Download the data
-
-```bash
-python scripts/download_data.py --config configs/experiment.yaml
-```
-
-This downloads all ~3,006 labelled Kepler long-cadence light curves from MAST via `lightkurve`, applies the preprocessing pipeline (Algorithm 1), and saves each as a `.parquet` file in `data/processed/`.
-
-**Expected time:** 1–4 hours (network-dependent).  
-**Disk usage:** ~2 GB for the full dataset.
-
-For a quick test (10 targets per class, ~60 light curves total):
-```bash
-python scripts/download_data.py --max_per_class 10
-```
-
-### Step 2: Run the full benchmark
-
-```bash
-python scripts/run_experiment.py --config configs/experiment.yaml
-```
-
-This runs the complete five-stage corrupt-and-recover pipeline (Algorithm 1) for all 13 methods × 3 missingness fractions × 30 seeds.
-
-**Expected time:** 8–48 hours on a single CPU core (GP and deep-learning methods dominate).
-
-To run a fast subset:
-```bash
-python scripts/run_experiment.py \
-    --methods Mean_Fill Linear GP_Matern32 TS_MICE SAITS \
-    --fractions 0.1 0.3 0.5 \
-    --n_seeds 5
-```
-
-Results are saved to `results/tables/experiment_results.csv`.
-
-### Step 3: Statistical tests
-
-```bash
-python scripts/run_statistical_tests.py --results_dir results
-```
-
-Produces Friedman, Nemenyi, and Wilcoxon test tables (Tables 4.5–4.7).
-
-### Step 4: Generate figures and tables
-
-```bash
-python scripts/generate_figures.py --results_dir results
-```
-
-Produces all figures and tables in `results/figures/` and `results/tables/`.
-
----
-
-## Running the Notebooks
-
-```bash
-cd notebooks
-jupyter lab
-```
-
-| Notebook | What it covers |
-|---|---|
-| `01_exploratory_data_analysis.ipynb` | Dataset overview, class distributions, representative light curves, period distributions, feature correlations |
-| `02_imputation_methods_demo.ipynb` | Visual comparison of all 13 imputers on a single light curve at 30% missingness |
-| `03_results_analysis.ipynb` | Interactive reproduction of all Chapter 4 tables and figures from `experiment_results.csv` |
-
----
-
-## Running the Tests
-
-```bash
-pytest tests/ -v
-```
-
-To skip slow tests (GP, RNN, GAIN, SAITS):
-```bash
-pytest tests/ -v -m "not slow"
-```
-
----
-
-## Using the API Directly
-
-```python
-import numpy as np
-from src.data.gap_injection import inject_gaps
-from src.imputation.registry import get_imputer
-from src.features.extraction import extract_features
-from src.evaluation.metrics import rmse
-
-# Synthetic sinusoidal light curve
-N = 1000
-t = np.linspace(0, 40, N)
-flux = 1.0 + 0.3 * np.sin(2 * np.pi * t / 4.0)
-
-# Inject 30% gaps
-gapped, mask, ground_truth = inject_gaps(flux, p=0.30, seed=42)
-
-# Impute with Gaussian Process
-imputer = get_imputer("GP_Matern32", seed=42, n_restarts=10)
-flux_imputed = imputer.impute(gapped, mask, t)
-
-# Evaluate
-missing_idx = np.where(~mask)[0]
-print(f"RMSE: {rmse(ground_truth, flux_imputed[missing_idx]):.6f}")
-
-# Extract features
-phi = extract_features(t, flux_imputed)
-print(f"Feature vector shape: {phi.shape}")  # (35,)
+├── scripts/                ← Standalone utility scripts
+├── notebooks/              ← Jupyter demonstration notebooks
+├── tests/                  ← pytest unit tests (≥80% coverage target)
+├── docs/                   ← Extended documentation
+├── figures/                ← Generated figures (gitignored)
+├── tables/                 ← Generated tables (gitignored)
+└── data/
+    ├── raw/                ← (empty; no external data needed)
+    ├── simulated/          ← Generated signals
+    ├── processed/          ← Intermediate processed data
+    └── results/            ← raw_results.csv, summary_results.csv
 ```
 
 ---
 
 ## Configuration
 
-All hyperparameters are in `configs/experiment.yaml`. Key settings:
+All parameters are in `configs/experiment.yml` — **no hard-coded values** exist in the code.
+
+Key parameters:
 
 ```yaml
-gap:
-  fractions: [0.10, 0.30, 0.50]   # missingness levels tested
-  block_ratio: 0.50                # 50% block, 50% scattered
-  n_seeds: 30                      # realisations per (light curve, fraction)
+signal:
+  N: 1323        # Cadences (Kepler Q1 long-cadence)
+  dt: 0.0204     # Days per cadence (~29.4 min)
+  A: 0.1         # Amplitude (normalised flux)
+  P0: 1.0        # True period (days)
+  sigma_eps: 0.02  # Gaussian noise level
 
-imputation:
-  gp:
-    n_restarts: 20                 # L-BFGS-B restarts
-  rnn:
-    hidden_size: 64                # BiLSTM units per direction
-    n_epochs: 50
-  saits:
-    d_model: 64
-    n_heads: 4
-    n_epochs: 100
+missingness:
+  fractions: [0.10, 0.30, 0.50]
+  n_seeds: 30
 
-classifier:
-  n_estimators: 500
-  cv_folds: 5
+methods:
+  gp_matern: true
+  saits: true
+  # ... all 13 methods toggleable
 ```
 
 ---
 
-## Data Availability
+## Python API
 
-All data are publicly available through the Mikulski Archive for Space Telescopes (MAST):
+```python
+from src.simulation.generator import generate_synthetic_lightcurve
+from src.missingness.injector import inject_gaps
+from src.imputation import GPMaternImputer, LinearInterpImputer
+from src.evaluation.metrics import evaluate_imputation
 
-- **Kepler PDCSAP light curves:** https://mast.stsci.edu
-- **Eclipsing Binary Catalogue** (Kirk et al. 2016): VizieR J/AJ/151/68
-- **RR Lyrae Catalogue** (Nemec et al. 2013): VizieR J/ApJ/773/181
-- **Debosscher et al. (2011) classification table:** VizieR J/A+A/534/A125
+# Generate signal
+t, flux, params = generate_synthetic_lightcurve(N=1323, P0=1.0, seed=0)
 
-The `download_data.py` script fetches all data automatically.
+# Inject 30% MCAR gaps
+gapped, missing_idx, true_vals = inject_gaps(flux, p=0.30, seed=42)
 
----
+# Impute
+imp = LinearInterpImputer()
+imputed = imp.fit_impute(t, gapped, missing_idx, period_est=1.0)
 
-## Dependencies
-
-| Package | Version | Purpose |
-|---|---|---|
-| `lightkurve` | ≥ 2.4.2 | Kepler data download |
-| `astropy` | ≥ 5.3.0 | Lomb-Scargle, time handling |
-| `numpy` | ≥ 1.24 | Core numerics |
-| `scipy` | ≥ 1.11 | CubicSpline, L-BFGS-B, Wilcoxon |
-| `pandas` | ≥ 2.0 | Data management |
-| `scikit-learn` | ≥ 1.3 | RF, KNN, MICE, SVM |
-| `george` | ≥ 0.4.0 | GP regression |
-| `torch` | ≥ 2.1 | RNN-Impute, GAIN, SAITS |
-| `xgboost` | ≥ 2.0 | GB-MICE |
-| `matplotlib` | ≥ 3.7 | All figures |
-| `seaborn` | ≥ 0.13 | Heatmaps |
-| `scikit-posthocs` | ≥ 0.8 | Nemenyi post-hoc test |
-| `joblib` | ≥ 1.3 | Parallel processing |
+# Evaluate
+metrics = evaluate_imputation(
+    t=t, flux_imputed=imputed, missing_idx=missing_idx,
+    true_vals=true_vals, true_period=1.0, true_amplitude=0.1, true_phase=0.0
+)
+print(f"RMSE: {metrics['rmse']:.4f}, PRR: {metrics['period_recovered']}")
+```
 
 ---
 
-## Key Algorithms → Code Mapping
+## Docker (fully isolated)
 
-| Thesis Algorithm | Module | Class/Function |
-|---|---|---|
-| Algorithm 1 — Preprocessing | `src/data/preprocessing.py` | `preprocess_light_curve()` |
-| Algorithm 2 — Gap Injection | `src/data/gap_injection.py` | `inject_gaps()` |
-| Algorithm 3 — Mean/LOCF/Linear/Spline | `src/imputation/classical.py` | `MeanFillImputer`, `ForwardFillImputer`, `LinearImputer`, `SplineImputer` |
-| Algorithm 4 — GP Matérn-3/2 | `src/imputation/gp_imputer.py` | `GPMatern32Imputer` |
-| Algorithm 5 — TS-MICE | `src/imputation/ts_mice.py` | `TSMICEImputer` |
-| Algorithm 5 (feat) — Feature extraction | `src/features/extraction.py` | `extract_features()` |
-| Algorithm 6 — KNN-Impute | `src/imputation/ml_imputers.py` | `KNNImputer` |
-| Algorithm 7 — RF-Impute | `src/imputation/ml_imputers.py` | `RFImputer` |
-| Algorithm 8 — RNN-Impute (BiLSTM) | `src/imputation/ml_imputers.py` | `RNNImputer` |
-| Algorithm 9 — GAIN-Impute | `src/imputation/ml_imputers.py` | `GAINImputer` |
-| Algorithm 10 — MF-Impute (Hankel ALS) | `src/imputation/ml_imputers.py` | `MFImputer` |
-| Algorithm 11 — GB-MICE | `src/imputation/ml_imputers.py` | `GBMICEImputer` |
-| Algorithm 12 — SAITS | `src/imputation/ml_imputers.py` | `SAITSImputer` |
-| Algorithm 6 — Classification protocol | `src/classification/classifier.py` | `train_classifier()`, `evaluate_classifier()` |
-| Overall workflow (Alg. 1 thesis) | `scripts/run_experiment.py` | `main()` |
+```bash
+make docker-build
+make docker-run
+```
+
+Results are written to the mounted host directories `data/results/`, `figures/`, `tables/`.
 
 ---
 
-## Reproducibility Checklist
+## Running tests
 
-- [x] All random seeds fixed in `configs/experiment.yaml` (base seed: 42)
-- [x] Gap seeds are deterministic: `seed = base_seed + realisation_index`
-- [x] Software versions pinned in `requirements.txt`
-- [x] Classifier trained once on gap-free data and frozen
-- [x] All 13 imputers verified leakage-free (see thesis Section 3.3)
-- [x] Statistical tests use seed-level accuracy values (S=30 per method-fraction)
-- [x] Bootstrap CIs use 1000 samples with fixed seed
+```bash
+make test
+# or:
+pytest tests/ -v --cov=src --cov-report=html
+```
+
+Open `htmlcov/index.html` to view coverage report.
 
 ---
 
@@ -376,35 +231,32 @@ The `download_data.py` script fetches all data automatically.
 If you use this code, please cite:
 
 ```bibtex
-@mastersthesis{khan2026lightcurve,
-  author    = {Adrita Khan},
-  title     = {Missing Data Imputation for Irregular Light Curves in Astronomy:
-               A Statistical Evaluation of Imputation Methods for Preserving
-               Variable Star Classification Performance},
-  school    = {North South University, Bangladesh},
-  year      = {2026},
-  month     = {June},
-  type      = {MSc Thesis},
-  note      = {Department of Mathematics and Physics,
-               MSc Applied Mathematics and Computational Science}
+@mastersthesis{khan2026repo,
+  author  = {Khan, Adrita},
+  title   = {Computational Aspects of Cosmology: Imputation Methods for
+             Astronomical Light Curves with Missing Data},
+  school  = {Your University},
+  year    = {2026},
+  url     = {https://github.com/Adrita-Khan/lightcurve-imputation}
 }
 ```
 
 ---
 
-## Acknowledgements
+## References
 
-This work uses publicly available data from the Kepler mission, retrieved via [lightkurve](https://lightkurve.github.io/lightkurve/). Kepler was a NASA spacecraft managed by the Jet Propulsion Laboratory.
-
-Variable-star labels were drawn from:
-- Kirk et al. (2016) — Kepler Eclipsing Binary Catalogue
-- Nemec et al. (2013) — Kepler RR Lyrae catalogue
-- Debosscher et al. (2011) — Kepler variable classification table
+- Borucki et al. (2010) — Kepler mission
+- Ricker et al. (2015) — TESS mission
+- Bellm et al. (2019) — ZTF
+- Ivezić et al. (2019) — LSST/Rubin
+- VanderPlas (2018) — Lomb–Scargle periodogram
+- Che et al. (2018) — GRU-D
+- Yoon et al. (2018) — GAIN
+- Du et al. (2023) — SAITS
+- Chen & Guestrin (2016) — XGBoost
 
 ---
 
-## Contact
+## Licence
 
-**Adrita Khan** — Student ID: 2517276658  
-Department of Mathematics and Physics, North South University, Bangladesh  
-Supervisor: Assoc. Prof. Dr. Md. Sumon Hossain
+MIT © 2026 Adrita Khan

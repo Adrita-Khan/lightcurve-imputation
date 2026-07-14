@@ -1,0 +1,48 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata below."
+
+title: "lightcurve-imputation: Simulation-Based Evaluation of Missing-Data Imputation Methods for Astronomical Light Curves"
+
+version: "1.0.0"
+date-released: "2026-01-01"
+
+authors:
+  - family-names: Khan
+    given-names: Adrita
+    orcid: "https://orcid.org/0000-0000-0000-0000"
+
+abstract: >
+  A fully reproducible Python package accompanying the master's thesis
+  "Computational Aspects of Cosmology: Imputation Methods for Astronomical
+  Light Curves with Missing Data". The package implements thirteen
+  imputation methods (from mean-fill to SAITS), a synthetic light-curve
+  generator, MCAR gap injection, and a complete evaluation harness that
+  reproduces all figures, tables, and statistical analyses from the thesis.
+
+keywords:
+  - astronomy
+  - light curves
+  - missing data
+  - imputation
+  - time series
+  - Gaussian process
+  - LSTM
+  - SAITS
+  - GAIN
+
+license: MIT
+
+repository-code: "https://github.com/Adrita-Khan/lightcurve-imputation"
+
+preferred-citation:
+  type: thesis
+  title: >
+    Computational Aspects of Cosmology: Imputation Methods for
+    Astronomical Light Curves with Missing Data
+  authors:
+    - family-names: Khan
+      given-names: Adrita
+  year: 2026
+  institution:
+    name: "Your University"
+  thesis-type: "Master's Thesis"

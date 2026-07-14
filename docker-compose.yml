@@ -1,0 +1,27 @@
+version: "3.9"
+
+services:
+  experiment:
+    build: .
+    image: lightcurve-imputation:latest
+    container_name: lc_imputation_run
+    volumes:
+      # Mount output directories so results are written to the host
+      - ./data/results:/app/data/results
+      - ./figures:/app/figures
+      - ./tables:/app/tables
+    command: ["python", "run_all.py", "--config", "configs/experiment.yml"]
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  fast-test:
+    build: .
+    image: lightcurve-imputation:latest
+    container_name: lc_imputation_fast
+    volumes:
+      - ./data/results:/app/data/results
+      - ./figures:/app/figures
+      - ./tables:/app/tables
+    command: ["python", "run_all.py", "--config", "configs/fast_test.yml"]
+    environment:
+      - PYTHONUNBUFFERED=1

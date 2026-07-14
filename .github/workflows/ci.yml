@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Tests – Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Install CPU-only torch to keep CI fast
+          pip install torch==2.0.1+cpu --extra-index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+          pip install -e .
+
+      - name: Lint with flake8
+        run: |
+          pip install flake8
+          flake8 src/ tests/ run_all.py \
+            --max-line-length=100 \
+            --extend-ignore=E203,W503 \
+            --count --statistics
+
+      - name: Check formatting with black
+        run: |
+          pip install black
+          black --check src/ tests/ run_all.py --line-length=100
+
+      - name: Run unit tests with coverage
+        run: |
+          pip install pytest pytest-cov
+          pytest tests/ \
+            -v \
+            --tb=short \
+            --cov=src \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            -x
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+
+  dry-run:
+    name: Dry-run pipeline
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch==2.0.1+cpu --extra-index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+          pip install -e .
+
+      - name: Validate pipeline (dry run)
+        run: python run_all.py --dry-run
+
+  fast-pipeline:
+    name: Fast pipeline (CI config)
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch==2.0.1+cpu --extra-index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+          pip install -e .
+
+      - name: Run fast-test pipeline
+        run: python run_all.py --config configs/fast_test.yml
+
+      - name: Upload generated figures
+        uses: actions/upload-artifact@v3
+        with:
+          name: figures-fast-test
+          path: figures/
+          retention-days: 7

@@ -1,51 +1,76 @@
 # Python
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
+*$py.class
+*.so
 *.egg
 *.egg-info/
 dist/
 build/
 .eggs/
-*.whl
+.installed.cfg
+lib/
+lib64/
 
 # Virtual environments
-.venv/
-venv/
+.env
+.venv
 env/
+venv/
 ENV/
+env.bak/
+venv.bak/
+
+# Conda
+.conda/
+
+# PyTest
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+*.cover
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
 
 # Jupyter
 .ipynb_checkpoints/
-*.ipynb_checkpoints
+*.ipynb_metadata/
 
-# Data (large files – download via scripts/download_data.py)
-data/raw/
-data/processed/
-data/cache/
-*.fits
-*.lc
+# IDEs
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
 
-# Results (regenerate via scripts)
-results/figures/*.pdf
-results/figures/*.png
-results/tables/*.csv
-results/models/*.pkl
-results/models/*.pt
+# Generated outputs (reproducible from run_all.py)
+data/results/*.csv
+figures/*.pdf
+figures/*.png
+figures/*.svg
+tables/*.tex
+tables/*.csv
 
-# Logs
-logs/
-*.log
+# Large data files (use DVC or direct download instead)
+data/raw/*.fits
+data/raw/*.hdf5
+data/simulated/*.npy
+data/processed/*.pkl
 
 # OS
 .DS_Store
 Thumbs.db
-.idea/
-.vscode/
-*.swp
-*.swo
 
-# Config secrets
-.env
-configs/local.yaml
+# Docker
+.dockerignore
+
+# Distribution
+MANIFEST
+
+# Documentation build
+docs/_build/
+docs/api/
+site/

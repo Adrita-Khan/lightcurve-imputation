@@ -1,285 +1,206 @@
 """
-Evaluation metrics for reconstruction fidelity and classification performance.
+Reconstruction quality metrics for imputed light curves.
 
-Implements:
-  - RMSE  (Eq. 3.50)
-  - MAE   (Eq. 3.51)
-  - Accuracy loss ΔAcc (Eq. 3.53)
-  - Period recovery rate PRR (Eq. 3.55)
-  - Feature distortion Δφ_k (Eq. 3.56)
-  - Bootstrap confidence intervals
-  - Friedman and Nemenyi statistical tests
-  - Wilcoxon signed-rank test
+All metrics are evaluated only at the artificially missing cadences (those in
+``missing_idx``), comparing the imputed flux against the withheld ground truth.
+
+Metrics implemented
+-------------------
+- RMSE   : Root Mean Squared Error (Equation 3.13)
+- MAE    : Mean Absolute Error (Equation 3.14)
+- MSE    : Mean Squared Error
+- RelErr : Mean relative error at missing cadences
+- PRR    : Period Recovery Rate (fraction of seeds with ε_P < tol)
+- ε_A   : Mean relative amplitude error (Equation 3.15)
+- ε_φ   : Mean phase offset (Equation 3.16)
+- Runtime, Memory
 """
 
 from __future__ import annotations
 
-import logging
-from typing import Dict, List, Optional
+from typing import Optional
 
 import numpy as np
-import pandas as pd
+from astropy.timeseries import LombScargle
 
-logger = logging.getLogger(__name__)
-
-EPS_STAB = 1e-8  # numerical stabiliser (Section 3.6.3)
+EPS_STAB = 1e-8
 
 
 # ---------------------------------------------------------------------------
-# Reconstruction metrics
+# Pointwise error metrics
 # ---------------------------------------------------------------------------
 
-def rmse(y_true: np.ndarray, y_pred: np.ndarray) -> float:
-    """Root Mean Squared Error at missing cadences (Eq. 3.50)."""
-    if len(y_true) == 0:
-        return np.nan
-    return float(np.sqrt(np.mean((y_pred - y_true) ** 2)))
+
+def compute_rmse(true: np.ndarray, pred: np.ndarray) -> float:
+    """Root Mean Squared Error at missing positions."""
+    diff = np.asarray(true, float) - np.asarray(pred, float)
+    return float(np.sqrt(np.mean(diff ** 2)))
 
 
-def mae(y_true: np.ndarray, y_pred: np.ndarray) -> float:
-    """Mean Absolute Error at missing cadences (Eq. 3.51)."""
-    if len(y_true) == 0:
-        return np.nan
-    return float(np.mean(np.abs(y_pred - y_true)))
+def compute_mae(true: np.ndarray, pred: np.ndarray) -> float:
+    """Mean Absolute Error at missing positions."""
+    diff = np.asarray(true, float) - np.asarray(pred, float)
+    return float(np.mean(np.abs(diff)))
+
+
+def compute_mse(true: np.ndarray, pred: np.ndarray) -> float:
+    """Mean Squared Error at missing positions."""
+    diff = np.asarray(true, float) - np.asarray(pred, float)
+    return float(np.mean(diff ** 2))
+
+
+def compute_relative_error(true: np.ndarray, pred: np.ndarray) -> float:
+    """Mean relative error |true - pred| / (|true| + ε) at missing positions."""
+    true = np.asarray(true, float)
+    pred = np.asarray(pred, float)
+    return float(np.mean(np.abs(true - pred) / (np.abs(true) + EPS_STAB)))
 
 
 # ---------------------------------------------------------------------------
-# Classification metric
+# Signal-property metrics
 # ---------------------------------------------------------------------------
 
-def accuracy_loss(acc_baseline: float, acc_imputed: float) -> float:
-    """ΔAcc = Acc_baseline − Acc_imputed (Eq. 3.53). Positive = worse."""
-    return float(acc_baseline - acc_imputed)
+
+def compute_period_recovery(
+    t: np.ndarray,
+    flux_imputed: np.ndarray,
+    true_period: float,
+    tol: float = 0.01,
+) -> tuple[bool, float]:
+    """Assess period recovery via Lomb–Scargle periodogram.
+
+    Parameters
+    ----------
+    t : np.ndarray
+        Time vector.
+    flux_imputed : np.ndarray
+        Imputed flux (no NaN).
+    true_period : float
+        Ground-truth period.
+    tol : float
+        Relative period error threshold for a successful recovery.
+
+    Returns
+    -------
+    recovered : bool
+        True if ``|P_est - P_true| / P_true < tol``.
+    rel_err : float
+        Relative period error ε_P.
+    """
+    ls = LombScargle(t, flux_imputed)
+    freq, power = ls.autopower(minimum_frequency=0.5 / t[-1], maximum_frequency=10.0)
+    best_freq = freq[np.argmax(power)]
+    P_est = 1.0 / best_freq if best_freq > 0 else np.inf
+    rel_err = abs(P_est - true_period) / (true_period + EPS_STAB)
+    return bool(rel_err < tol), float(rel_err)
 
 
-# ---------------------------------------------------------------------------
-# Period recovery
-# ---------------------------------------------------------------------------
-
-def relative_period_error(p_true: float, p_imp: float) -> float:
-    """ε_P = |P̂_true − P̂_imp| / P̂_true  (Eq. 3.54)."""
-    if p_true <= 0:
-        return np.nan
-    return float(abs(p_true - p_imp) / p_true)
-
-
-def period_recovery_rate(
-    p_true_array: np.ndarray,
-    p_imp_array: np.ndarray,
-    threshold: float = 0.01,
+def compute_amplitude_error(
+    flux_imputed: np.ndarray,
+    true_amplitude: float,
 ) -> float:
+    """Relative amplitude error ε_A (Equation 3.15).
+
+    Estimated amplitude = (max - min) / 2 of the imputed signal.
     """
-    Fraction of light curves with ε_P < threshold (Eq. 3.55).
-
-    Parameters
-    ----------
-    p_true_array : np.ndarray
-        Ground-truth periods.
-    p_imp_array : np.ndarray
-        Imputed-curve estimated periods.
-    threshold : float
-        Recovery threshold (default 1%).
-
-    Returns
-    -------
-    float in [0, 1]
-    """
-    eps = np.abs(p_true_array - p_imp_array) / (np.abs(p_true_array) + EPS_STAB)
-    return float(np.mean(eps < threshold))
+    amp_est = (np.max(flux_imputed) - np.min(flux_imputed)) / 2.0
+    return float(abs(amp_est - true_amplitude) / (true_amplitude + EPS_STAB))
 
 
-# ---------------------------------------------------------------------------
-# Feature distortion
-# ---------------------------------------------------------------------------
-
-def feature_distortion(
-    phi_imputed: np.ndarray,   # (n_test, n_features)
-    phi_true: np.ndarray,      # (n_test, n_features)
-    eps: float = EPS_STAB,
-) -> np.ndarray:
-    """
-    Normalised per-feature distortion Δφ_k (Eq. 3.56).
-
-    Parameters
-    ----------
-    phi_imputed : (n_test, n_features)
-    phi_true    : (n_test, n_features)
-    eps         : numerical stabiliser
-
-    Returns
-    -------
-    np.ndarray, shape (n_features,)
-        Mean normalised distortion per feature.
-    """
-    denom = np.abs(phi_true) + eps
-    relative_error = np.abs(phi_imputed - phi_true) / denom
-    return relative_error.mean(axis=0)
-
-
-# ---------------------------------------------------------------------------
-# Bootstrap confidence intervals
-# ---------------------------------------------------------------------------
-
-def bootstrap_ci(
-    values: np.ndarray,
-    n_bootstrap: int = 1000,
-    alpha: float = 0.05,
-    seed: int = 42,
-) -> tuple[float, float]:
-    """
-    Bootstrap confidence interval for the mean of `values`.
-
-    Parameters
-    ----------
-    values : np.ndarray, shape (S,)
-        Seed-level metric values.
-    n_bootstrap : int
-        Number of bootstrap samples (default 1000).
-    alpha : float
-        Significance level (default 0.05 → 95% CI).
-    seed : int
-        RNG seed.
-
-    Returns
-    -------
-    (lower, upper) : tuple of float
-    """
-    rng = np.random.default_rng(seed)
-    means = np.array([
-        np.mean(rng.choice(values, size=len(values), replace=True))
-        for _ in range(n_bootstrap)
-    ])
-    lo = float(np.percentile(means, 100 * alpha / 2))
-    hi = float(np.percentile(means, 100 * (1 - alpha / 2)))
-    return lo, hi
-
-
-# ---------------------------------------------------------------------------
-# Statistical tests
-# ---------------------------------------------------------------------------
-
-def friedman_test(
-    acc_matrix: np.ndarray,  # (n_seeds, n_methods)
-) -> dict:
-    """
-    Friedman test for equal classification accuracy across methods.
-
-    Parameters
-    ----------
-    acc_matrix : np.ndarray, shape (S, M)
-        S = number of seeds, M = number of methods.
-
-    Returns
-    -------
-    dict with keys: statistic, p_value
-    """
-    from scipy.stats import friedmanchisquare
-
-    # scipy.stats.friedmanchisquare takes each method as a separate argument
-    cols = [acc_matrix[:, j] for j in range(acc_matrix.shape[1])]
-    stat, pval = friedmanchisquare(*cols)
-    return {"statistic": float(stat), "p_value": float(pval)}
-
-
-def nemenyi_test(
-    acc_matrix: np.ndarray,  # (n_seeds, n_methods)
-    method_names: List[str],
-    alpha: float = 0.05,
-) -> pd.DataFrame:
-    """
-    Nemenyi post-hoc pairwise test.
-
-    Parameters
-    ----------
-    acc_matrix : (S, M) accuracy matrix
-    method_names : list of M method names
-    alpha : significance level
-
-    Returns
-    -------
-    pd.DataFrame of p-values (M × M), indexed by method names.
-    """
-    try:
-        import scikit_posthocs as sp
-    except ImportError:
-        raise ImportError("scikit-posthocs required: pip install scikit-posthocs")
-
-    df = pd.DataFrame(acc_matrix, columns=method_names)
-    p_matrix = sp.posthoc_nemenyi_friedman(df)
-    return p_matrix
-
-
-def wilcoxon_test(
-    a: np.ndarray,
-    b: np.ndarray,
-) -> dict:
-    """
-    Paired Wilcoxon signed-rank test between two methods' seed-level accuracies.
-
-    Parameters
-    ----------
-    a, b : np.ndarray, shape (S,)
-        Seed-level accuracy for method A and method B.
-
-    Returns
-    -------
-    dict with keys: statistic (W), p_value, effect_size (r_W)
-    """
-    from scipy.stats import wilcoxon
-
-    try:
-        stat, pval = wilcoxon(a, b, alternative="two-sided")
-        # Effect size r_W = Z / sqrt(S)
-        from scipy.stats import norm
-        n = len(a)
-        z = norm.isf(pval / 2)  # convert p-value to z approximation
-        r_w = z / np.sqrt(n)
-        return {
-            "statistic": float(stat),
-            "p_value":   float(pval),
-            "effect_size": float(r_w),
-            "n": n,
-        }
-    except Exception as exc:
-        return {"statistic": np.nan, "p_value": np.nan, "effect_size": np.nan, "n": len(a)}
-
-
-# ---------------------------------------------------------------------------
-# Safe missingness threshold p*
-# ---------------------------------------------------------------------------
-
-def safe_missingness_threshold(
-    acc_loss_at_fractions: Dict[float, float],
-    threshold: float = 0.05,
+def compute_phase_error(
+    t: np.ndarray,
+    flux_imputed: np.ndarray,
+    true_period: float,
+    true_phase: float,
 ) -> float:
+    """Mean phase offset ε_φ in units of the signal period (Equation 3.16).
+
+    Estimated phase from the dominant Fourier coefficient.
     """
-    Linearly interpolate to find the missingness fraction p* at which
-    ΔAcc first exceeds `threshold` (default 5 pp).
+    ls = LombScargle(t, flux_imputed)
+    freq, power = ls.autopower(minimum_frequency=0.5 / t[-1], maximum_frequency=10.0)
+    best_freq = freq[np.argmax(power)]
+
+    # Fit sinusoidal model at the estimated frequency
+    omega = 2.0 * np.pi * best_freq
+    A_matrix = np.column_stack([np.sin(omega * t), np.cos(omega * t)])
+    try:
+        coeffs, *_ = np.linalg.lstsq(A_matrix, flux_imputed, rcond=None)
+        phase_est = float(np.arctan2(coeffs[0], coeffs[1]))
+    except np.linalg.LinAlgError:
+        return 1.0
+
+    diff = abs(phase_est - true_phase)
+    # Wrap to [0, π]
+    diff = diff % (2 * np.pi)
+    if diff > np.pi:
+        diff = 2 * np.pi - diff
+    # Normalise to period fractions
+    return float(diff / (2.0 * np.pi))
+
+
+# ---------------------------------------------------------------------------
+# Combined evaluation
+# ---------------------------------------------------------------------------
+
+
+def evaluate_imputation(
+    t: np.ndarray,
+    flux_imputed: np.ndarray,
+    missing_idx: np.ndarray,
+    true_vals: np.ndarray,
+    true_period: float,
+    true_amplitude: float,
+    true_phase: float,
+    period_tol: float = 0.01,
+    runtime_s: float = 0.0,
+    memory_mb: float = 0.0,
+) -> dict:
+    """Compute the full suite of evaluation metrics for one imputation result.
 
     Parameters
     ----------
-    acc_loss_at_fractions : dict mapping p → ΔAcc
-    threshold : float
+    t : np.ndarray
+        Time vector.
+    flux_imputed : np.ndarray
+        Fully imputed flux (no NaN).
+    missing_idx : np.ndarray
+        Indices of missing cadences.
+    true_vals : np.ndarray
+        Withheld ground-truth flux at ``missing_idx``.
+    true_period, true_amplitude, true_phase : float
+        Known ground-truth signal parameters.
+    period_tol : float
+        Relative period error threshold for PRR.
+    runtime_s : float
+        Wall-clock time (seconds) from the imputer.
+    memory_mb : float
+        Peak memory increase (MiB) from the imputer.
 
     Returns
     -------
-    float or np.nan if the threshold is never exceeded in [0, max_p].
+    dict
+        Mapping of metric names to float values.
     """
-    fractions = sorted(acc_loss_at_fractions.keys())
-    losses    = [acc_loss_at_fractions[f] for f in fractions]
+    pred_vals = flux_imputed[missing_idx]
 
-    # Add p=0, ΔAcc=0 as baseline
-    fractions = [0.0] + fractions
-    losses    = [0.0] + losses
+    rmse = compute_rmse(true_vals, pred_vals)
+    mae = compute_mae(true_vals, pred_vals)
+    mse = compute_mse(true_vals, pred_vals)
+    rel_err = compute_relative_error(true_vals, pred_vals)
+    recovered, period_rel_err = compute_period_recovery(t, flux_imputed, true_period, period_tol)
+    amp_err = compute_amplitude_error(flux_imputed, true_amplitude)
+    phase_err = compute_phase_error(t, flux_imputed, true_period, true_phase)
 
-    for i in range(1, len(fractions)):
-        if losses[i] >= threshold:
-            # Linear interpolation
-            p0, p1 = fractions[i - 1], fractions[i]
-            l0, l1 = losses[i - 1], losses[i]
-            if l1 == l0:
-                return float(p0)
-            p_star = p0 + (threshold - l0) / (l1 - l0) * (p1 - p0)
-            return float(p_star)
-
-    return float("nan")
+    return {
+        "rmse": rmse,
+        "mae": mae,
+        "mse": mse,
+        "relative_error": rel_err,
+        "period_recovered": int(recovered),
+        "period_rel_err": period_rel_err,
+        "amplitude_error": amp_err,
+        "phase_error": phase_err,
+        "runtime_s": runtime_s,
+        "memory_mb": memory_mb,
+    }

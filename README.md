@@ -5,7 +5,9 @@
 
 
 > **Simulation-based evaluation of 13 missing-data imputation methods for astronomical light curves**  
-> Accompanying code for the master's thesis *"Computational Aspects of Cosmology: Imputation Methods for Astronomical Light Curves with Missing Data"*
+> Accompanying code for the master's thesis *"Missing Data Imputation for Irregular Light
+Curves in Astronomy: A Statistical Evaluation of Imputation Methods for Preserving
+Periodic Signal Properties"*
 
 ---
 

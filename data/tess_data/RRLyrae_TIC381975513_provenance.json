@@ -1,0 +1,17 @@
+{
+  "label": "RRLyrae_TIC381975513",
+  "tic_id": "TIC 381975513",
+  "description": "RR Lyrae pulsator (Blazhko candidate)",
+  "sector": 1,
+  "camera": 4,
+  "ccd": 4,
+  "author": "QLP",
+  "exptime_s": 1800.0,
+  "flux_column": "sap_flux",
+  "archive_access_date_utc": "2026-09-12T23:57:00.262887+00:00",
+  "original_num_rows": 1266,
+  "literature_period_days": null,
+  "rows_after_cleaning": 993,
+  "rows_flagged_or_nonfinite": 273,
+  "fraction_flagged_or_nonfinite": 0.2156398104265403
+}

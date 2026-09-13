@@ -1,0 +1,17 @@
+{
+  "label": "EclipsingBinary",
+  "tic_id": "TIC 344298995",
+  "description": "Eclipsing binary (TESS EB catalog)",
+  "sector": 42,
+  "camera": 3,
+  "ccd": 2,
+  "author": "QLP",
+  "exptime_s": 600.0,
+  "flux_column": "sap_flux",
+  "archive_access_date_utc": "2026-09-12T23:57:18.658490+00:00",
+  "original_num_rows": 3354,
+  "literature_period_days": 2.467961,
+  "rows_after_cleaning": 2071,
+  "rows_flagged_or_nonfinite": 1283,
+  "fraction_flagged_or_nonfinite": 0.38252832438878953
+}
